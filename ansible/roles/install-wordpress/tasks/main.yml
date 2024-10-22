@@ -1,0 +1,56 @@
+---
+# File: roles/install-wordpress/tasks/main.yml
+# Purpose: Install and configure WordPress on a target droplet.
+
+- name: Check if WordPress has already been installed
+  stat:
+    path: '{{ wp_install_directory }}/wp-config.php'
+  register: is_wp_installed
+
+- name: Download and extract WordPress package
+  unarchive:
+    src: '{{ wp_download_url }}'
+    dest: '{{ wp_install_directory }}'
+    remote_src: yes
+    extra_opts: [--strip-components=1]
+  when: not is_wp_installed.stat.exists
+
+- name: Generate WordPress salts for wp-admin.php
+  get_url:
+    url: '{{ wp_salt_gen_url }}'
+    dest: '/tmp/wp_salts'
+  when: not is_wp_installed.stat.exists
+
+- name: Create variable from salts downloaded
+  shell: 'cat /tmp/wp_salts'
+  register: wp_salts
+  when: not is_wp_installed.stat.exists
+
+- name: Ensure /tmp/wp_salts is not present
+  file:
+    path: '/tmp/wp_salts'
+    state: absent
+
+- name: Configure permissions on directories
+  file:
+    path: '{{ wp_install_directory }}'
+    state: directory
+    recurse: true
+    owner: 'nobody'
+    group: 'nobody'
+    mode: '0750'
+
+- name: Create wp-config.php
+  template:
+    src: '../templates/wp-config.php.j2'
+    dest: '{{ wp_install_directory }}/wp-config.php'
+    owner: 'nobody'
+    group: 'nobody'
+    mode: '0400'
+  when: not is_wp_installed.stat.exists
+
+- name: Create daily backup script
+  template:
+    src: '../templates/backup-wordpress.j2'
+    dest: '/etc/cron.daily/backup-wordpress'
+    mode: '0700'
